@@ -1,0 +1,68 @@
+import pandas as pd
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_selection import SelectKBest, chi2
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Membaca data dari file CSV
+file_path = '/content/data_oversampling_sentiment.xlsx'  # Ganti dengan path file Anda
+data = pd.read_excel(file_path)
+df = pd.DataFrame(data)
+
+# Langkah 1: Mengubah teks menjadi representasi Bag of Words menggunakan CountVectorizer
+vectorizer = CountVectorizer()
+X = vectorizer.fit_transform(df['Content'])
+
+# Langkah 2: Menyiapkan label (sentiment)
+# Mengubah label 'positif' menjadi 1 dan 'negatif' menjadi 0
+y = df['sentiment'].apply(lambda x: 1 if x == 'positif' else 0)
+
+# Langkah 3: Seleksi fitur menggunakan Chi-Square
+# Mengambil 80% teratas fitur berdasarkan nilai Chi-Square
+num_features_to_select = int(0.8 * X.shape[1])
+selector = SelectKBest(chi2, k=num_features_to_select)
+X_selected = selector.fit_transform(X, y)
+
+# Langkah 4: Membagi data menjadi data latih dan data uji
+X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
+
+# Langkah 5: Melatih model Naive Bayes
+nb_model = MultinomialNB()
+nb_model.fit(X_train, y_train)
+
+# Langkah 6: Memprediksi data uji
+y_pred = nb_model.predict(X_test)
+
+# Langkah 7: Evaluasi model
+conf_matrix = confusion_matrix(y_test, y_pred)
+TP = conf_matrix[1, 1]  # True Positives
+TN = conf_matrix[0, 0]  # True Negatives
+FP = conf_matrix[0, 1]  # False Positives
+FN = conf_matrix[1, 0]  # False Negatives
+
+# Akurasi Positif dan Negatif
+akurasi_positif = TP / (TP + FP) if (TP + FP) != 0 else 0
+akurasi_negatif = TN / (TN + FN) if (TN + FN) != 0 else 0
+
+print("Confusion Matrix:")
+print(conf_matrix)
+
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred))
+
+print("\nOverall Accuracy:")
+print(accuracy_score(y_test, y_pred))
+
+print(f"\nAkurasi Positif: {akurasi_positif:.2f}")
+print(f"Akurasi Negatif: {akurasi_negatif:.2f}")
+
+# Langkah 8: Visualisasi confusion matrix
+plt.figure(figsize=(8, 6))
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=['Negatif', 'Positif'], yticklabels=['Negatif', 'Positif'])
+plt.xlabel('Prediksi')
+plt.ylabel('Aktual')
+plt.title('Confusion Matrix')
+plt.show()
