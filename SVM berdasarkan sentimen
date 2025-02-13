@@ -1,0 +1,70 @@
+import pandas as pd
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_selection import SelectKBest, chi2
+from sklearn.model_selection import train_test_split
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Membaca data dari file Excel
+file_path = '/content/data_oversampling_sentiment.xlsx'  # Ganti dengan path file Anda
+data = pd.read_excel(file_path)
+
+# Konversi data ke DataFrame
+df = pd.DataFrame(data)
+
+# Menyiapkan teks dan label sentimen
+# Untuk sentimen: Mengubah label 'positif' menjadi 1 dan 'negatif' menjadi 0
+df['sentiment'] = df['sentiment'].apply(lambda x: 1 if x.lower() == 'positif' else 0)
+X = df['Content']  # Kolom teks
+y = df['sentiment']  # Kolom label sentimen
+
+# Mengubah teks menjadi representasi Bag of Words menggunakan CountVectorizer
+vectorizer = CountVectorizer()
+X_vectorized = vectorizer.fit_transform(X)
+
+# Seleksi fitur menggunakan Chi-Square (80% fitur teratas)
+chi2_selector = SelectKBest(chi2, k=int(0.8 * X_vectorized.shape[1]))
+X_selected = chi2_selector.fit_transform(X_vectorized, y)
+
+# Membagi data menjadi data latih dan uji (80% latih, 20% uji)
+X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
+
+# Melatih model SVM untuk klasifikasi sentimen
+svm_sentiment = SVC(kernel='linear', random_state=42)
+svm_sentiment.fit(X_train, y_train)
+
+# Memprediksi data uji
+y_pred = svm_sentiment.predict(X_test)
+
+# Evaluasi model
+print("Evaluasi Model SVM untuk Sentimen:")
+print("Confusion Matrix:")
+conf_matrix = confusion_matrix(y_test, y_pred, labels=[0, 1])
+print(conf_matrix)
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred))
+print("\nAccuracy:")
+print(accuracy_score(y_test, y_pred))
+
+# Menghitung akurasi untuk masing-masing kelas
+class_accuracies = {}
+for i, label in enumerate(['Negatif', 'Positif']):
+    TP = conf_matrix[i, i]  # True Positives
+    total_class = conf_matrix[i, :].sum()  # Total instances of this class
+    class_accuracy = TP / total_class if total_class != 0 else 0
+    class_accuracies[label] = class_accuracy
+
+# Tampilkan akurasi per kelas
+print("\nAkurasi Per Kelas:")
+for label, accuracy in class_accuracies.items():
+    print(f"{label}: {accuracy:.2f}")
+
+# Visualisasi confusion matrix
+plt.figure(figsize=(8, 6))
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=['Negatif', 'Positif'], yticklabels=['Negatif', 'Positif'])
+plt.xlabel('Prediksi')
+plt.ylabel('Aktual')
+plt.title('Confusion Matrix untuk Sentimen')
+plt.show()
