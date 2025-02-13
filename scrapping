@@ -1,0 +1,97 @@
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+from bs4 import BeautifulSoup
+import pandas as pd
+import os
+from langdetect import detect, DetectorFactory
+from webdriver_manager.chrome import ChromeDriverManager
+
+# Menetapkan seed untuk hasil yang konsisten
+DetectorFactory.seed = 0
+
+# Mengatur opsi Chrome
+chrome_options = Options()
+chrome_options.add_experimental_option("detach", True)
+service = Service(ChromeDriverManager().install())
+driver = webdriver.Chrome(service=service, options=chrome_options)
+
+# Fungsi untuk menulis data ke Excel
+def write_to_excel(data):
+    if os.path.exists("scraped_data.xlsx"):
+        df = pd.read_excel("scraped_data.xlsx")
+        new_df = pd.DataFrame(data)
+        df = pd.concat([df, new_df], ignore_index=True)
+        df.to_excel("scraped_data.xlsx", index=False)
+    else:
+        df = pd.DataFrame(data)
+        df.to_excel("scraped_data.xlsx", index=False)
+
+def scrape_google_maps_reviews(url):
+    driver.get(url)
+
+    found_names = set()
+    found_content = []
+    found_stars = []
+    found_dates = []
+
+    found_count = 0
+
+    while found_count < 1001:
+        time.sleep(2)
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+
+        user_elements = soup.find_all(class_='d4r55')
+        content_wrapper_elements = soup.find_all(class_='MyEned')
+        star_elements = soup.find_all(class_='DU9Pgb')
+        date_elements = soup.find_all(class_='DU9Pgb')
+
+        if not user_elements or not content_wrapper_elements or not star_elements or not date_elements:
+            print("Tidak menemukan elemen yang diinginkan, mencoba lagi...")
+            continue
+
+        for i in range(min(len(user_elements), len(content_wrapper_elements), len(star_elements), len(date_elements))):
+            name = user_elements[i].get_text().strip()
+            if name not in found_names:
+                content_span = content_wrapper_elements[i].find('span', class_='wiI7pd')
+                content = content_span.get_text().strip() if content_span else "No content"
+                
+                star_span = star_elements[i].find('span', class_='kvMYJc')
+                star_rating = star_span['aria-label'] if star_span else "No rating"
+                
+                date_span = date_elements[i].find('span', class_='rsqaWe')
+                date = date_span.get_text().strip() if date_span else "No date"
+                
+                # Filter berdasarkan bahasa Indonesia
+                try:
+                    if detect(content) == 'id':
+                        found_count += 1
+                        found_content.append(content)
+                        found_stars.append(star_rating)
+                        found_dates.append(date)
+                        found_names.add(name)
+                        print(f"Data ke-{found_count} ditemukan dengan nama:", name)
+                        
+                        # Menulis data ke Excel setiap kali elemen ditemukan
+                        write_to_excel({'Username': [name], 'Content': [content], 'Bintang': [star_rating], 'Date': [date]})
+                except:
+                    continue
+                
+                if found_count >= 1001:
+                    break
+
+    # Membuat DataFrame dari data yang ditemukan
+    data = {'Username': list(found_names), 'Content': found_content, 'Bintang': found_stars, 'Date': found_dates}
+    df = pd.DataFrame(data)
+
+    # Ekspor DataFrame ke Excel (jika masih dibutuhkan)
+    if found_count < 1001:
+        df.to_excel("scraped_data.xlsx", index=False)
+
+# Inisialisasi URL
+url = "https://www.google.com/maps/place/Pandawa+Beach/@-8.8448028,115.1839506,17z/data=!4m8!3m7!1s0x2dd25b7cd8ba1f31:0x41b8785dd055b2a4!8m2!3d-8.8452802!4d115.1870679!9m1!1b1!16s%2Fg%2F1ygbcghrt?entry=ttu"
+scrape_google_maps_reviews(url)
